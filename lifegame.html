@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<canvas id="canvas2"></canvas>
+<input type="number" value="5" id="x"></input>
+<button value="5" id="b">reset</button>
+<button value="5" id="s">set</button>
+<script>
+const can = document.getElementById("canvas");
+const ctx = can.getContext("2d");
+
+can.width = 500;
+can.height = 500;
+can.style.border = "2px solid #555";
+//can.style.transform = "rotate(45deg)"
+
+const can2 = document.getElementById("canvas2");
+const ctx2 = can2.getContext("2d");
+const but = document.getElementById("b")
+const set = document.getElementById("s")
+
+can2.width = 100;
+can2.height = 100;
+can2.style.border = "2px solid #555";
+
+let input = document.getElementById("x")
+let can2X = 0;
+let can2Y = 0;
+let array2 = []
+let arrayLength = input.value **2;
+for(let i = 0; i<arrayLength; i++){
+    array2.push(0)
+}
+let pieceSize = can2.width / input.value;
+can2.addEventListener("mousemove",e=>{
+    can2X = e.offsetX;
+    can2Y = e.offsetY;
+})
+can2.addEventListener("mousedown",e=>{
+    let index = Math.floor(e.offsetX/pieceSize) + Math.floor(e.offsetY/pieceSize)*input.value
+    arrayLength = input.value **2;
+    array2[index] = 1
+})
+but.addEventListener("click",e=>{
+    array2 = []
+    for(let i = 0; i<arrayLength; i++){
+        array2.push(0)
+    }
+})
+set.addEventListener("click",e=>{
+    game.setArray = array2;
+})
+
+
+class Generation {
+    constructor(game){
+        this.game = game;
+        this.cells = [];
+        this.init();
+    }
+    init(){
+        for(let i=0; i<this.game.row; i++){
+            for(let j=0; j<this.game.col; j++){
+                const A = Math.random() > 0.5 ? 0 : 1;
+                this.cells.push(A)
+            }
+        }
+    }
+
+    nextGeneration(){
+        let nGenerates = []
+        this.cells.forEach((generate,i) => {
+            let count = this.checkAround(i)
+           let next = 0;
+           if(generate === 0 && count === 3){
+            next = 1;
+           }else if(generate === 1 && (count === 2 || count === 3)){
+            next = 1;
+           }else{
+            next = 0;
+           }
+           nGenerates.push(next)
+        })
+        this.cells = nGenerates
+    }
+    pushCells(array,x,y,w,h){
+
+        for(let i=0; i<h; i++){
+            for(let j=0; j<w; j++){
+                let aIndex = indexAndXyToggle(w,j,i);
+                let herfW = Math.floor(w/2)
+                let herfH = Math.floor(h/2)
+                let index = indexAndXyToggle(this.game.row,x+j-herfW,y+i-herfH);
+                this.cells[index] = array[aIndex]
+            }
+        }
+    }
+    checkAround(index){
+        let iX = index % this.game.row;
+        let iY = Math.floor(index / this.game.row);
+        let count = 0;
+        for(let y=-1; y<=1; y++){
+            for(let x=-1; x<=1; x++){
+                if(iY+y >= 0 && iY+y < this.game.row && iX+x >= 0 && iX+x < this.game.col){
+                    //console.log(this.generates[index+y*this.game.col+x])
+                    count+=this.cells[index+y*this.game.col+x];
+                }
+                //if(iY+y < 0)console.log("上はない")
+                //if(iY+y > this.game.row)console.log("下はない")
+                //if(iX+x < 0)console.log("左はない");
+                //if(iX+x > this.game.col)console.log("右はない")
+            }
+        }
+        count = count - this.cells[index]
+        return count;
+    }
+    draw(){
+        ctx.fillStyle = "#4EFC7F"
+        for(let i=0; i<this.game.row; i++){
+            for(let j=0; j<this.game.col; j++){
+                if(this.cells[i*this.game.col + j] === 1){
+                    //ctx.fillRect(j*this.game.pWidth,i*this.game.pHeight,this.game.pWidth,this.game.pHeight)
+                    ctx.beginPath();
+                    ctx.arc(j*this.game.pWidth+this.game.pWidth/2,i*this.game.pHeight+this.game.pHeight/2,this.game.pHeight*0.4,0, Math.PI*2)
+                    ctx.fill();
+                }
+            }
+        }
+    }
+}
+
+class Game {
+    constructor(can){
+        this.can = can;
+        this.row = 100;
+        this.col = 100;
+        this.pWidth = 8;
+        this.pHeight = 8;
+
+        this.width = this.col * this.pWidth;
+        this.height = this.row  * this.pHeight;
+
+        this.can.width = this.width;
+        this.can.height = this.height
+
+        this.length = this.row * this.col;
+        this.generation = new Generation(this);
+
+        this.setArray = []
+
+        this.can.addEventListener("mousemove",e=>{
+            this.generation.nextGeneration();
+        })
+        this.can.addEventListener("mousedown",e=>{
+            
+            const x = Math.floor(e.offsetX/this.pWidth);
+            const y = Math.floor(e.offsetY/this.pHeight);
+            this.setArray = array2
+            let herf = Math.sqrt(this.setArray.length)
+            const index = indexAndXyToggle(this.row,x,y)
+            this.generation.pushCells(this.setArray,x,y,herf,herf)
+        })
+    }
+    render(){
+        this.generation.draw();
+        this.drawGrid();
+    }
+    drawGrid(){
+        ctx.lineWidth = 1
+        ctx.strokeStyle = "#333";
+        
+        for(let i=1; i<this.row; i++){
+            ctx.beginPath();
+            ctx.moveTo(0,lerp(0,this.height,i/this.row))
+            ctx.lineTo(this.width,lerp(0,this.height,i/this.row))
+            ctx.stroke();
+        }
+        for(let i=1; i<this.col; i++){
+            ctx.beginPath();
+            ctx.moveTo(lerp(0,this.width,i/this.col),0)
+            ctx.lineTo(lerp(0,this.width,i/this.col),this.height)
+            ctx.stroke();
+        }
+    }
+}
+
+let game = new Game(can);
+
+function indexAndXyToggle(row,A,B=null){
+    if(B !== null){
+        return A + B * row;
+    }else{
+        let x = A % row;
+        let y = Math.floor(A / row);
+        return [x, y]
+    }
+}
+
+function lerp(A,B,t){
+    return A+(B-A)*t;
+}
+
+function animate(){
+    ctx.clearRect(0,0,can.width,can.height)
+    ctx.fillStyle = "#2F4EFF"
+    ctx.fillRect(0,0,can.width,can.height)
+    ctx2function();
+    game.render();
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+function ctx2function(){
+    ctx2.clearRect(0,0,can.width,can.height)
+    ctx2.fillStyle = "#2F4EFF"
+    ctx2.fillRect(0,0,can.width,can.height)
+    ctx2.lineWidth = 1
+    ctx2.strokeStyle = "#333";
+
+    let row = input.value
+    let col = input.value
+    pieceSize = can2.width / input.value;
+    let x = Math.floor(can2X/pieceSize)*pieceSize + pieceSize/2
+    let y = Math.floor(can2Y/pieceSize)*pieceSize + pieceSize/2
+    
+
+    for(let i=1; i<row; i++){
+        ctx2.beginPath();
+        ctx2.moveTo(0,lerp(0,can2.height,i/row))
+        ctx2.lineTo(can2.width,lerp(0,can2.height,i/row))
+        ctx2.stroke();
+    }
+    for(let i=1; i<col; i++){
+        ctx2.beginPath();
+        ctx2.moveTo(lerp(0,can2.width,i/col),0)
+        ctx2.lineTo(lerp(0,can2.width,i/col),can2.height)
+        ctx2.stroke();
+    }
+    ctx2.fillStyle = "#4EFC7F"
+    ctx2.fillStyle = "rgba(78,252,127,0.5)"
+    ctx2.beginPath();
+    ctx2.arc(x,y,pieceSize*0.5,0,Math.PI*2);
+    ctx2.fill();
+    for(let i=0; i<row; i++){
+        for(let j=0; j<col; j++){
+            if(array2[i*col + j] === 1){
+                ctx2.beginPath();
+                ctx2.arc(j*pieceSize+pieceSize/2,i*pieceSize+pieceSize/2,pieceSize*0.4,0, Math.PI*2)
+                ctx2.fill();
+            }
+        }
+    }
+}
+
+</script>
+</body>
+</html>
