@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body{
+            margin: 0;
+            display: flex;
+            align-items: center;
+            flex-direction: column;
+            background-color: lightgray;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<canvas id="gameAria"></canvas>
+<canvas id="touchAria"></canvas>
+<script src="unit.js"></script>
+<script src="background.js"></script>
+<script src="touchPanel.js"></script>
+<script src="puddle.js"></script>
+<script src="block.js"></script>
+<script src="ball.js"></script>
+<script>
+const gCan = document.getElementById("gameAria");
+const gCtx = gCan.getContext("2d");
+const tCan = document.getElementById("touchAria");
+const tCtx = tCan.getContext("2d");
+
+gCan.width = 350
+gCan.height = 500
+gCan.style.border = "2px solid #555"
+
+tCan.width = 350;
+tCan.height = 150;
+tCan.style.border = "2px solid #555"
+tCan.style.borderTop = "none"
+tCan.style.borderRadius = "0 0 50px 50px"
+
+gCan.style.marginTop = `${(window.innerHeight - gCan.height - tCan.height)/2}px`
+tCan.style.marginBottom = `${(window.innerHeight - gCan.height - tCan.height)/2}px`
+
+
+gCtx.fillStyle = "white";
+gCtx.fillRect(0,0,gCan.width,gCan.height)
+
+class Config{}
+
+class Empty{
+    constructor(x,y){
+        this.x = x;
+        this.y = y;
+        this.type = "empty";
+    }
+    draw(){
+
+    }
+}
+class AddBall{
+    constructor(x,y,w,h){
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.cx = x+w/2
+        this.cy = y+h/2 
+        this.r = 6;
+        this.type = "addBall";
+    }
+    draw(){
+        this.cx = this.x+this.w/2
+        this.cy = this.y+this.h/2
+        gCtx.lineWidth = 1
+        gCtx.strokeStyle = "blue"
+        gCtx.fillStyle = "#07F5E1";
+        gCtx.beginPath();
+        gCtx.arc(this.cx,this.cy,this.r,0,Math.PI*2)
+        gCtx.fill();
+        gCtx.stroke();
+    }
+}
+
+class Segment{
+    constructor(A,B){
+        this.A = A;
+        this.B = B;
+
+        this.c = "blue";
+        this.width = 3
+        this.delete = false;
+    }
+    render(){
+        gCtx.lineWidth = this.width
+        gCtx.strokeStyle = this.c;
+        gCtx.beginPath()
+        gCtx.moveTo(this.A.x,this.A.y)
+        gCtx.lineTo(this.B.x,this.B.y)
+        gCtx.stroke();
+    }
+}
+
+
+class Game{
+    constructor(gCan,tCan){
+        this.backGround = new BackGround(gCan)
+
+        this.puddle = new Puddle(gCan);
+        this.balls = [];
+        for(let i=0; i<2; i++){
+            this.balls.push(new Ball(gCan,this.puddle))
+        }
+
+        this.fallSpeed = 0.2
+        this.col = 5;
+        this.row = 1;
+        this.size = gCan.width/this.col
+        this.blocks = [];
+        this.startY = -this.size
+        this.blockProbability = 0.5
+        this.ballProbability = 0.2
+        //init
+        this.pushBlocks(true);
+        this.borders = [];
+
+        this.frames = [new Segment({x:0,y:gCan.height},{x:0,y:0}),new Segment({x:0,y:0},{x:gCan.width,y:0}),new Segment({x:gCan.width,y:0},{x:gCan.width,y:gCan.height})]
+    }
+    pushBlocks(init=false){
+        if(this.blocks.length===0 || this.blocks[this.blocks.length-1].y>0 || init){
+            for(let i=0; i<this.col; i++){
+                const pos = [this.size*i,this.startY,this.size,this.size]
+                if(init)pos[1] = -this.size
+                let randomValue = Math.random();
+                if((randomValue-=this.blockProbability)<=0){
+                    this.blocks.push(new Block(...pos))
+                }else if((randomValue-=this.ballProbability)<=0){
+                    this.blocks.push(new AddBall(...pos))
+                }else{
+                    this.blocks.push(new Empty(...pos))
+                }
+            }
+        }
+    }
+    render(){
+        this.pushBlocks();
+        //this.pushBorder();
+        this.blocks.forEach(block =>{
+            if(block.type==="block"&&block.y>gCan.height)this.gameOver = true;
+        })
+        //console.log(this.gameOver)
+
+        this.blocks = this.blocks.filter(block => block.type!=="block"||block.hp>0)
+        this.blocks = this.blocks.filter(block => !block.delete)
+        this.blocks = this.blocks.filter(block => block.y<gCan.height+this.size)
+        this.balls = this.balls.filter(balls => balls.y <gCan.height)
+        this.puddle.render();
+        this.balls.forEach(ball =>{
+            ball.render()
+        })
+        this.borders.forEach(border => {
+            border.render();
+        })
+        this.blocks.forEach((block,i)=>{
+            block.y += this.fallSpeed
+            block.draw();
+        })
+
+        this.frames.forEach(frame => {
+            frame.render()
+        })
+
+        //ボールとブロックなど（予定）
+        let segments = []
+
+        this.blocks.forEach(block=>{
+            segments.push(...this.getSegOfBlock(block))
+        })
+        this.borders.forEach(border=>{
+            segments.push({A:border.A,B:border.B,border})
+        })
+
+        this.balls.forEach(ball=>{
+            let allHits = []
+            segments.forEach(seg=>{
+                let a = this.segBallColl(seg,ball)
+                if(a.length>0)allHits.push(...a)
+            })
+            if(allHits.length>0){
+                let hitest = allHits[getMin(allHits,"dis")[0]]
+                if(hitest.seg.border){
+
+                    let A = {x:hitest.seg.A.x,y:hitest.seg.A.y}
+                    let B = {x:hitest.seg.B.x,y:hitest.seg.B.y}
+                    let P = {x:ball.x,y:ball.y}
+                    let a = this.hitEdge(A,B,P,{block:hitest,ball:ball})
+                    
+                    ball.provisional(...a)
+                }
+                else if(hitest.seg.block.type === "block"){
+                    this.BB({block:hitest.seg.block,ball:ball})
+                    hitest.seg.block.hp--;
+                }
+            }
+        })
+
+        //ボールとアイテム
+        let addBalls = []
+
+        this.balls.forEach(ball=>{
+            this.blocks.forEach(block=>{
+                if(block.type==="addBall"){
+                    const dis = Math.sqrt((block.cx-ball.x)**2 + (block.cy-ball.y)**2)
+                    if(dis<ball.r+block.r){
+                        ball.angle = Math.atan2(ball.y-block.cy,ball.x-block.cx)
+                        const nBall = new Ball(gCan,this.puddle)
+                        nBall.x = block.cx;
+                        nBall.y = block.cy;
+                        nBall.angle = ball.angle-Math.PI;
+                        nBall.release = true;
+                        addBalls.push(nBall)
+                        block.delete = true;
+                    }
+                }
+            })
+        })
+
+        //ボールとフレーム
+        this.balls.forEach(ball => {
+            this.frames.forEach(frame=>{
+                let hit = this.segBallColl(frame,ball)
+                let hitIndex = getMin(hit,"dis")
+                if(hitIndex.length===1){
+                    let A = {x:hit[0].seg.A.x,y:hit[0].seg.A.y}
+                    let B = {x:hit[0].seg.B.x,y:hit[0].seg.B.y}
+                    let P = {x:ball.x,y:ball.y}
+                    let a = this.hitEdge(A,B,P,{block:hit[0],ball:ball})
+                    ball.provisional(...a)
+                }
+                let AB = {x:frame.B.x-frame.A.x,y:frame.B.y-frame.A.y}
+                let AP = {x:ball.x-frame.A.x,y:ball.y-frame.A.y}
+                let c = Math.sign(AB.x*AP.y - AP.x*AB.y)
+                if(c<0){
+                    //frameの外側に行ったか
+                    let a = this.hitEdge(frame.A,frame.B,ball)
+                    ball.provisional(...a)
+                }
+            })
+        })
+
+        this.balls.push(...addBalls)
+    }
+    pushBorder(){
+        if(Math.random()<0.01&&this.flag===undefined){
+            this.flag = true;
+            this.borders.push(new Segment({x:this.size,y:10},{x:this.size,y:200}))
+        }
+    }
+
+    hitEdge(A,B,P){
+        let AB = {x:B.x-A.x,y:B.y-A.y}
+        let AP = {x:P.x-A.x,y:P.y-A.y}
+        let squared = AB.x**2 + AB.y**2;
+        let dotProduct = AB.x*AP.x + AB.y*AP.y;
+        let t = dotProduct / squared;
+        let I = {x:A.x + t*AB.x,y:A.y + t*AB.y}
+
+        let edgeA = A;
+        let edgeB = B;
+
+        let c = Math.sign(AB.x*AP.y - AP.x*AB.y)
+        return [I,{A:edgeA,B:edgeB},c]
+    }
+    BB({block,ball}){
+        let bbHits = this.blockBallCollDete({block,ball});
+        let hitIndex = getMin(bbHits,"dis")
+        if(hitIndex.length===1){
+            let A = {x:bbHits[0].seg.A.x,y:bbHits[0].seg.A.y}
+            let B = {x:bbHits[0].seg.B.x,y:bbHits[0].seg.B.y}
+            let P = {x:ball.x,y:ball.y}
+  
+            let a = this.hitEdge(A,B,P,{block,ball})
+            ball.provisional(...a)
+
+        }else if(hitIndex.length===2){
+            let corner = bbHits[0].corner;
+            let edgeA = corner === bbHits[0].seg.A ? bbHits[0].seg.B : bbHits[0].seg.A;
+            let edgeB = corner === bbHits[1].seg.A ? bbHits[1].seg.B : bbHits[1].seg.A;
+            
+            ball.provisional(corner,{A:edgeA,B:edgeB},1)
+        }
+    }
+
+    blockBallCollDete({block,ball}){
+        let hits = []
+        let segs = this.getSegOfBlock(block);
+        segs.forEach(seg=>{
+            hits.push(...this.segBallColl(seg,ball))
+        })
+        return hits
+    
+    }
+    segBallColl(seg,ball){
+        let hits = []
+        let AB = {x:seg.B.x-seg.A.x,y:seg.B.y-seg.A.y};
+        let vAToC = {x:ball.x-seg.A.x,y:ball.y-seg.A.y}
+        let vBToC = {x:ball.x-seg.B.x,y:ball.y-seg.B.y}
+    
+        let ABLength = Math.sqrt(AB.x**2+AB.y**2);
+        let unit = {x:AB.x/ABLength,y:AB.y/ABLength};
+    
+        let productVec = Math.abs(unit.x*vBToC.y - unit.y*vBToC.x);
+        if(productVec<ball.r){
+            
+            let vStartInnerProduct = AB.x*vAToC.x + AB.y*vAToC.y
+            let vEndInnerProduct = AB.x*vBToC.x + AB.y*vBToC.y
+        
+            let AtoCDistance = Math.sqrt(vAToC.x**2 + vAToC.y**2)
+            let BtoCDistance = Math.sqrt(vBToC.x**2 + vBToC.y**2)
+            if((vStartInnerProduct>0&&vEndInnerProduct<0) || (vStartInnerProduct<0&&vEndInnerProduct>0)){
+                //線に当たった時
+                let nearest = AtoCDistance<BtoCDistance;
+                let corner = nearest ? seg.A : seg.B;
+                hits.push({seg,corner:corner,dis:productVec,index:0})
+            }else if(AtoCDistance<ball.r || BtoCDistance<ball.r){
+                //線の端に当たった時
+                let nearest = AtoCDistance<BtoCDistance;
+                let dis = nearest ? AtoCDistance : BtoCDistance;
+                let corner = nearest ? seg.A : seg.B;
+                hits.push({seg,corner:corner,dis:dis,index:0});
+            }
+        }
+        return hits
+    }
+    getSegOfBlock(block){
+        let segs = [
+            {A:{x:block.x+block.w,y:block.y},B:{x:block.x,y:block.y},block},
+            {A:{x:block.x+block.w,y:block.y+block.h},B:{x:block.x+block.w,y:block.y},block},
+            {A:{x:block.x,y:block.y+block.h},B:{x:block.x+block.w,y:block.y+block.h},block},
+            {A:{x:block.x,y:block.y},B:{x:block.x,y:block.y+block.h},block},
+        ]
+        return segs
+    }
+}
+
+
+
+const touchPanel = new TouchPanel(tCan)
+const tStatus = touchPanel.touch
+const game = new Game(gCan, tCan)
+
+let space = true;
+let half = true;
+let halfCount = true;
+
+window.addEventListener("keydown",e=>{
+    if(e.key === " ")space = !space
+    else if(e.key === "h")half = !half
+    else render();
+})
+
+function render(){
+    gCtx.clearRect(0,0,gCan.width,gCan.height)
+    tCtx.clearRect(0,0,tCan.width,tCan.height)
+    game.render();
+    touchPanel.draw();
+    touchPanel.update();
+}
+
+function animate(){
+
+    let animeFlag = true;
+    halfCount = !halfCount
+
+    if(!space)animeFlag = false;
+    if(!half && !halfCount)animeFlag = false;
+    if(animeFlag)render();
+
+
+    requestAnimationFrame(animate);
+}
+animate();
+
+
+
+</script>
+</body>
+</html>
