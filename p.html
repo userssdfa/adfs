@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Puzzle</title>
+    <style>
+        body{
+            margin: 0 0;
+            overflow: hidden;
+            text-align: center;
+            touch-action: manipulation;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+    </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+class Grid{
+    constructor(puzzle,x,y){
+        this.puzzle = puzzle;
+        this.x = x;
+        this.y = y;
+    }
+    draw(ctx){
+        ctx.setLineDash([3,3]);
+        for(let i=0; i<=this.puzzle.size; i++){
+            ctx.beginPath();
+            ctx.moveTo(this.x,this.y+this.puzzle.pieceLeng*i);
+            ctx.lineTo(this.x+this.puzzle.width,this.y+this.puzzle.pieceLeng*i);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(this.x+this.puzzle.pieceLeng*i,this.y);
+            ctx.lineTo(this.x+this.puzzle.pieceLeng*i,this.y+this.puzzle.width);
+            ctx.stroke();
+        }
+        ctx.setLineDash([])
+    }
+}
+
+class Piece{
+    constructor(puzzle,x,y,number = 0){
+        this.puzzle = puzzle;
+        this.x = x;
+        this.y = y;
+        this.colors = [
+            "rgba(0,0,0,0.2)",
+            "orange",
+            "yellow",
+            "green",
+            "blue",
+            "indigo",
+            "violet"
+        ];
+        this.number = number;
+    }
+    draw(ctx,{temp = null,alpha = null} = {}){
+        ctx.save();
+        
+        ctx.globalAlpha = alpha ? alpha : 1;
+        ctx.fillStyle = temp ? this.colors[temp] : this.colors[this.number];
+        ctx.lineWidth = 2
+        ctx.strokeStyle = "dimgray"
+        ctx.fillRect(
+            this.x,this.y,this.puzzle.pieceLeng,this.puzzle.pieceLeng
+        );
+        if(this.number>0){
+            ctx.strokeRect(
+                this.x,this.y,this.puzzle.pieceLeng,this.puzzle.pieceLeng
+            );
+            ctx.font = "30px Arial"
+            ctx.fillStyle = "black"
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.number,this.x+this.puzzle.pieceLeng/2,this.y+this.puzzle.pieceLeng/2)
+        }
+
+        ctx.restore();
+    }
+}
+
+class Hand{
+    constructor(puzzle,initPos){
+        this.puzzle = puzzle;
+        this.initPos = initPos;
+        this.x = initPos.x;
+        this.y = initPos.y;
+
+        this.angle = 0;
+        this.pieces = [];
+
+        this.selected = false;
+        this.used = false;
+
+        this.pieceInit();
+    }
+    resetPos(){
+        this.x = this.initPos.x;
+        this.y = this.initPos.y;
+    }
+    numberReset(n1,n2){
+        if(!n1) n1 = Math.floor(Math.random()*4)
+        if(!n2) n2 = Math.floor(Math.random()*4);
+
+        this.pieces[0].number = n1
+        this.pieces[1].number = n2
+    }
+    pieceInit(){
+        const Hand1 = 
+            new Piece(
+                this.puzzle,
+                this.x+Math.cos(this.angle)*this.puzzle.pieceLeng/2,
+                this.y+Math.sin(this.angle)*this.puzzle.pieceLeng/2,
+                3
+            )
+        const Hand2 = 
+            new Piece(
+                this.puzzle,
+                this.x+Math.cos(this.angle+Math.PI)*this.puzzle.pieceLeng/2,
+                this.y+Math.sin(this.angle+Math.PI)*this.puzzle.pieceLeng/2,
+                1
+            )
+        this.pieces.push(Hand1,Hand2)
+    }
+    update(){
+        
+        for(let i=0; i<this.pieces.length; i++){
+            this.pieces[i].x = this.x+Math.cos(this.angle+Math.PI*i)*this.puzzle.pieceLeng/2;
+            this.pieces[i].y = this.y+Math.sin(this.angle+Math.PI*i)*this.puzzle.pieceLeng/2;
+        }
+    }
+    draw(ctx){
+        ctx.beginPath();
+        ctx.arc(this.initPos.x+this.puzzle.pieceLeng/2,this.initPos.y+this.puzzle.pieceLeng/2,10,Math.PI*2,0)
+        ctx.fill();
+
+        if(!this.used){
+            for(const piece of this.pieces){
+                let alpha = true;
+                piece.draw(ctx)
+            }
+        }
+    }
+}
+
+class Puzzle{
+    constructor(can){
+        this.can = can;
+
+        this.width = can.width*0.9;
+        this.height = can.height*0.7;
+        this.pos = {x:(can.width-this.width)/2,y:(can.height-this.height)/2};
+
+        this.pieceMaxNumber = 6;
+        this.size = 10;
+        this.pieceLeng = this.width / this.size;
+
+        this.handPoses = [
+            {x:this.pos.x+this.width/4-this.pieceLeng/2,
+            y:this.pos.y+(this.height-this.width)/2+this.width-this.pieceLeng/2},
+            {x:this.pos.x+this.width/4*2-this.pieceLeng/2,
+            y:this.pos.y+(this.height-this.width)/2+this.width-this.pieceLeng/2},
+            {x:this.pos.x+this.width/4*3-this.pieceLeng/2,
+            y:this.pos.y+(this.height-this.width)/2+this.width-this.pieceLeng/2},
+        ]
+        this.hands = [new Hand(this,this.handPoses[0]),new Hand(this,this.handPoses[1]),new Hand(this,this.handPoses[2])];
+        this.field = [];
+        this.hoverField = [];
+        this.grid = new Grid(this,this.pos.x,this.pos.y);
+
+
+        this.mouse = {x:null,y:null};
+        this.gripOffset = {x:null,y:null}
+        this.makeField();
+        this.#addEventListeners();
+    }
+    makeField(){
+        for(let i=0; i<this.size; i++){
+            for(let j=0; j<this.size; j++){
+                this.field.push(new Piece(
+                    this,
+                    j*this.pieceLeng+this.pos.x,
+                    i*this.pieceLeng+this.pos.y
+                ))
+            }
+        }
+    }
+    #addEventListeners(){
+        const isTouchDevice = 'ontouchstart' in window || navigator.msMaxTouchPoints;
+        console.log(isTouchDevice)
+        if(isTouchDevice){
+            this.can.addEventListener("touchstart",this.touchStart.bind(this))
+            this.can.addEventListener("touchmove",this.touchMove.bind(this))
+            this.can.addEventListener("touchend",this.touchEnd.bind(this))
+        }else{
+            this.can.addEventListener("mousedown",this.mouseDown.bind(this))
+            this.can.addEventListener("mousemove",this.mouseMove.bind(this))
+            this.can.addEventListener("mouseup",this.mouseUp.bind(this))
+
+        }
+        this.can.addEventListener("contextmenu",e=>e.preventDefault())
+        
+    }
+    touchStart(e){
+        const loc = {
+            offsetX:e.touches[0].clientX,
+            offsetY:e.touches[0].clientY,
+            button:0
+        }
+        this.mouseDown(loc);
+    }
+    touchMove(e){
+        const loc = {
+            offsetX:e.touches[0].clientX,
+            offsetY:e.touches[0].clientY,
+        }
+        this.mouseMove(loc);
+    }
+    touchEnd(){
+        console.log("a")
+        let temp={};
+        temp.button = 0
+        this.mouseUp(temp);
+    }
+    mouseDown(e){
+        this.mouse = {x:e.offsetX,y:e.offsetY};
+
+        if(e.button===0){//left
+            for(const hand of this.hands){
+                if(mlutiCol(this,hand.pieces,this.mouse)&&!hand.used){
+                    hand.selected = true;
+                    this.gripOffset = {x:this.mouse.x-hand.x,
+                        y:this.mouse.y-hand.y}
+                }
+            }
+        }
+        if(e.button===2){//right
+            for(const hand of this.hands){
+                if(mlutiCol(this,hand.pieces,this.mouse)&&!hand.used){
+                   
+                    hand.angle += Math.PI/2
+                }
+            }
+        }
+    }
+    mouseMove(e){
+        this.mouse = {x:e.offsetX,y:e.offsetY};
+        for(const hand of this.hands){
+            if(hand.selected){
+                    hand.x = this.mouse.x - this.gripOffset.x
+                    hand.y = this.mouse.y - this.gripOffset.y
+                }
+            }
+    }
+    mouseUp(e){
+        console.log(e)
+        if(e.button===2)return;
+        for(const hand of this.hands){
+            if(hand.selected){
+                const offsetMouse = {x:this.mouse.x-this.gripOffset.x,y:this.mouse.y-this.gripOffset.y}
+                const dist = distance(hand.initPos,offsetMouse)
+                
+                if(dist<this.pieceLeng/2)hand.angle += Math.PI/2
+            }
+            const newField = this.checkOnField(hand);
+            if(newField){
+                hand.used = true;
+                this.setNumber(newField)
+                this.checkErase();
+                this.checkAllUsed();
+            }
+            hand.resetPos();
+            hand.selected = false;
+        }
+    }
+    checkAllUsed(){
+        const a = this.hands.every(hand => hand.used);
+        if(a){
+            for(const hand of this.hands){
+                hand.numberReset(randomize(this.pieceMaxNumber,1),randomize(this.pieceMaxNumber,1))
+                hand.used = false;
+            }
+        }
+    }
+    setNumber(newField){
+        //setNumber
+        for(let i=0; i<this.field.length; i++){
+            if(newField[i]){
+                this.field[i].number = newField[i]
+            }
+        }
+    }
+    falseField(){
+        let array = [];
+        for(let i=0; i<this.field.length; i++){
+            array.push(false)
+        }
+        return array;
+    }
+    checkErase(){
+        this.array = [];
+        
+        let water = this.falseField();
+
+        for(let i=0; i<this.field.length; i++){
+            this.array = [];
+            water = this.falseField();
+            const searchNumber = this.field[i].number;
+            if(searchNumber !== 0){
+                const xy = this.indexToXy(i);
+                this.multi(water,xy,searchNumber);
+            }
+            this.clearField(this.array,searchNumber);
+            
+        }
+    }
+    clearField(a,s){
+        if(a.length >= s){
+            for(const index of a){
+                this.field[index].number = 0;
+            }
+        }
+    }
+    multi(water,xy,searchNumber){
+        const index = this.xyToIndex(xy);
+        if(water[index])return;
+        water[index] = true;
+        this.array.push(index);
+        const upXy = {x:xy.x,y:xy.y-1}
+        const downXy = {x:xy.x,y:xy.y+1}
+        const leftXy = {x:xy.x-1,y:xy.y}
+        const rightXy = {x:xy.x+1,y:xy.y}
+        const dirArray = [upXy,downXy,leftXy,rightXy];
+
+        for(let xy of dirArray){
+            if(this.checkInside(xy)){
+                const i = this.xyToIndex(xy);
+                if(searchNumber === this.field[i].number){
+                    
+                    this.multi(water,xy,searchNumber);
+                }
+            }
+        }
+    }
+    checkInside(xy){
+        return xy.x>=0 && xy.x<this.size && xy.y>=0 && xy.y<this.size
+    }
+    indexToXy(index){
+        return {x:index%this.size,y:Math.floor(index/this.size)}
+    }
+    xyToIndex(xy){
+        return xy.x + xy.y*this.size;
+    }
+    checkOnField(hand){
+        const tempField = []
+        tempField.length = this.field.length;
+        for(const piece of hand.pieces){
+            let flag = false;
+            for(let i=0; i<this.field.length; i++){
+                const cell = this.field[i]
+                if(distance(piece,cell)<this.pieceLeng/2 &&
+                    cell.number === 0){
+                    flag = true;
+                    tempField[i] = piece.number
+                }
+            }
+            if(!flag)return false;
+        }
+        
+        return tempField;
+    }
+    checkHoverPiece(cell,piece){
+        return distance(cell,piece)<this.pieceLeng/2
+            && cell.number === 0
+    }
+    draw(){
+        const ctx = this.can.getContext("2d");
+        const select = this.hands.find(hand => hand.selected);
+        this.grid.draw(ctx);
+        for(let i=0; i<this.field.length; i++){
+            const cell = this.field[i];
+            let temp = null;
+            let alpha = 1;
+            if(select){
+                for(const piece of select.pieces){
+                    if(this.checkHoverPiece(cell,piece)){
+                        temp = piece.number;
+                        alpha = 0.5
+                    }
+                }
+            }
+            cell.draw(ctx,{temp,alpha})
+        }
+
+        for(const hand of this.hands){
+            hand.update();
+            hand.draw(ctx)
+        }
+
+    }
+}
+
+
+const puzzle = new Puzzle(canvas)
+
+animate()
+function animate(){
+    canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height)
+    puzzle.draw();
+    requestAnimationFrame(animate)
+}
+
+function mlutiCol(puzzle,rects,p){
+    let flag = false;
+    for(const rect of rects){
+        if(rectPoint(puzzle,rect,p)){
+            flag = true;
+        }
+    }
+    return flag
+}
+
+function distance(p1,p2){
+    return Math.hypot(p2.x-p1.x,p2.y-p1.y)
+}
+function rectPoint(puzzle,rect,p){
+    let leng = puzzle.pieceLeng;
+    return rect.x<=p.x && rect.x+leng>=p.x && rect.y<=p.y && rect.y+leng>=p.y
+}
+
+
+function randomize(max,min=0){
+    return Math.floor(Math.random()*(max-min)+min);
+}
+</script>
+</body>
+</html>
