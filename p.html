@@ -219,7 +219,7 @@ class Puzzle{
     touchMove(e){
         const loc = {
             offsetX:e.touches[0].clientX,
-            offsetY:e.touches[0].clientY,
+            offsetY:e.touches[0].clientY-30,
         }
         this.mouseMove(loc);
     }
